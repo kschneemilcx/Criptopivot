@@ -78,13 +78,10 @@ def generate_dashboard():
 
 def regenerate_loop():
     """Loop infinito que regenera el dashboard cada hora"""
-    # Primera generación
-    generate_dashboard()
-    
-    # Loop cada hora
+    # Loop cada hora (primera generación ya se hizo en main)
     while True:
         try:
-            info(f"⏰ Próxima actualización en 60 minutos...")
+            info(f"⏰ Esperando 60 minutos para próxima actualización...")
             time.sleep(3600)  # 60 minutos
             generate_dashboard()
         except Exception as e:
@@ -283,16 +280,23 @@ def main():
 </html>
 """)
     
-    # Crear y cambiar al directorio de salida
+    # Crear directorio de salida
     os.makedirs(CONFIG["OUTPUT_DIR"], exist_ok=True)
-    os.chdir(CONFIG["OUTPUT_DIR"])
-    info(f"📂 Directorio de trabajo: {os.getcwd()}")
     
-    # Thread para regeneración automática
+    # Generar dashboard ANTES de iniciar servidor
+    info("⏳ Generando dashboard inicial antes de iniciar servidor...")
+    generate_dashboard()
+    success("✅ Dashboard inicial listo")
+    
+    # Cambiar al directorio de salida
+    os.chdir(CONFIG["OUTPUT_DIR"])
+    success(f"📂 Servidor en: {os.getcwd()}")
+    
+    # Iniciar loop de regeneración en background
     regen_thread = threading.Thread(target=regenerate_loop, daemon=True)
     regen_thread.start()
     
-    # Iniciar servidor HTTP inmediatamente (no esperar)
+    # Iniciar servidor HTTP
     Handler = DashboardHandler
     
     try:
