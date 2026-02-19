@@ -29,10 +29,17 @@ from crypto_pivot_v4_5_hybrid import (
 PORT = int(os.environ.get("PORT", 10000))
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
-    """Handler HTTP con logging mejorado"""
+    """Handler HTTP con logging mejorado y sin cache"""
     
     def log_message(self, format, *args):
         info(f"{self.address_string()} - {format % args}")
+    
+    def end_headers(self):
+        # Agregar headers anti-cache
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
     
     def do_GET(self):
         # Redirect root to dashboard
@@ -318,4 +325,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
