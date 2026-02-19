@@ -283,6 +283,10 @@ def main():
 </html>
 """)
     
+    # Cambiar al directorio de salida ANTES de iniciar servidor
+    os.chdir(CONFIG["OUTPUT_DIR"])
+    info(f"📂 Directorio de trabajo: {os.getcwd()}")
+    
     # Thread para regeneración automática
     regen_thread = threading.Thread(target=regenerate_loop, daemon=True)
     regen_thread.start()
