@@ -283,7 +283,8 @@ def main():
 </html>
 """)
     
-    # Cambiar al directorio de salida ANTES de iniciar servidor
+    # Crear y cambiar al directorio de salida
+    os.makedirs(CONFIG["OUTPUT_DIR"], exist_ok=True)
     os.chdir(CONFIG["OUTPUT_DIR"])
     info(f"📂 Directorio de trabajo: {os.getcwd()}")
     
@@ -313,3 +314,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
