@@ -107,15 +107,187 @@ def main():
     # Cambiar a directorio de salida
     os.chdir(CONFIG["OUTPUT_DIR"])
     
+    # Crear página de loading temporal
+    with open("dashboard.html", "w", encoding="utf-8") as f:
+        f.write("""
+<!DOCTYPE html>
+<html lang='es'>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Crypto Pivot Analyzer - Cargando</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: linear-gradient(135deg, #0a0e1a 0%, #1a1f35 100%);
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .loading-container {
+            text-align: center;
+            max-width: 600px;
+        }
+        .logo {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        h1 {
+            color: #00ff9f;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .spinner {
+            border: 4px solid rgba(0,255,159,0.1);
+            border-radius: 50%;
+            border-top: 4px solid #00ff9f;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 30px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            background: rgba(15,22,41,0.8);
+            border: 1px solid #1e2d4a;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #00ff9f;
+        }
+        .status-title {
+            color: #00ff9f;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .status-text {
+            color: #64748b;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .progress-bar {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            height: 8px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #00ff9f, #00d4ff);
+            height: 100%;
+            width: 0%;
+            animation: loading 3s ease-in-out infinite;
+        }
+        @keyframes loading {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+        .countdown {
+            color: #ffd60a;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 20px 0;
+        }
+        .steps {
+            text-align: left;
+            margin: 20px 0;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+        .step-icon {
+            color: #00ff9f;
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class='loading-container'>
+        <div class='logo'>🔷</div>
+        <h1>CRYPTO PIVOT ANALYZER v4.5</h1>
+        
+        <div class='spinner'></div>
+        
+        <div class='status'>
+            <div class='status-title'>⏳ Generando Dashboard Inicial</div>
+            <div class='status-text'>
+                Primera vez: descargando 12 meses de datos históricos 4H para BTC y ETH.
+                <br>Esto puede tomar 2-4 minutos.
+            </div>
+            <div class='progress-bar'>
+                <div class='progress-fill'></div>
+            </div>
+        </div>
+        
+        <div class='countdown' id='countdown'>Recargando en <span id='seconds'>10</span>s</div>
+        
+        <div class='steps'>
+            <div class='step'>
+                <span class='step-icon'>✓</span>
+                <span>Servidor HTTP iniciado</span>
+            </div>
+            <div class='step'>
+                <span class='step-icon'>⏳</span>
+                <span>Descargando datos históricos BTC/ETH...</span>
+            </div>
+            <div class='step'>
+                <span class='step-icon'>⏳</span>
+                <span>Calculando TIME/DISTANCE validation...</span>
+            </div>
+            <div class='step'>
+                <span class='step-icon'>⏳</span>
+                <span>Generando dashboard HTML...</span>
+            </div>
+        </div>
+        
+        <p style='color:#64748b;font-size:0.75rem;margin-top:30px'>
+            Esta página se recargará automáticamente cuando el dashboard esté listo.
+        </p>
+    </div>
+    
+    <script>
+        let seconds = 10;
+        const countdownEl = document.getElementById('seconds');
+        
+        const interval = setInterval(() => {
+            seconds--;
+            countdownEl.textContent = seconds;
+            
+            if (seconds <= 0) {
+                clearInterval(interval);
+                location.reload();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+""")
+    
     # Thread para regeneración automática
     regen_thread = threading.Thread(target=regenerate_loop, daemon=True)
     regen_thread.start()
     
-    # Esperar a que se genere el primer dashboard
-    info("⏳ Esperando primera generación del dashboard...")
-    time.sleep(5)  # Dar tiempo al thread para iniciar
-    
-    # Iniciar servidor HTTP
+    # Iniciar servidor HTTP inmediatamente (no esperar)
     Handler = DashboardHandler
     
     try:
