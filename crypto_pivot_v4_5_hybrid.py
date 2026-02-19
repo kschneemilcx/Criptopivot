@@ -63,7 +63,10 @@ def err(m):     print(Fore.RED    + "  ✗  " + m)
 #  FETCH DATA — Multi-asset CCXT con paginación
 # ══════════════════════════════════════════════════════════════════════════
 def fetch_ohlcv(asset: str, timeframe: str, months: int) -> pd.DataFrame:
-    """Descarga OHLCV desde Binance via CCXT con paginación."""
+    """
+    Descarga OHLCV con fallback a múltiples exchanges para evitar geo-blocking.
+    Exchanges: Kraken -> Coinbase -> OKX -> Bybit
+    """
     os.makedirs(CONFIG["CACHE_DIR"], exist_ok=True)
     cache_file = os.path.join(CONFIG["CACHE_DIR"], f"{asset}_{timeframe}_{months}m.json")
     
@@ -80,46 +83,96 @@ def fetch_ohlcv(asset: str, timeframe: str, months: int) -> pd.DataFrame:
             pass
     
     info(f"Descargando {asset} {timeframe} {months}m...")
+    
+    # Lista de exchanges (en orden de preferencia, evitando Binance por geo-blocking)
+    exchanges_to_try = [
+        ("kraken", f"{asset}/USD"),
+        ("coinbase", f"{asset}/USD"),
+        ("okx", f"{asset}/USDT"),
+        ("bybit", f"{asset}/USDT"),
+    ]
+    
     try:
         import ccxt
-        ex = ccxt.binance({"enableRateLimit": True})
-        symbol = f"{asset}/USDT"
-        since = int((datetime.now(timezone.utc) - timedelta(days=30*months)).timestamp() * 1000)
         
-        all_ohlcv = []
-        while True:
-            batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=1000)
-            if not batch: break
-            all_ohlcv.extend(batch)
-            last_ts = batch[-1][0]
-            if last_ts >= int(datetime.now(timezone.utc).timestamp() * 1000) - 3600*1000:
-                break
-            since = last_ts + 1
-            if len(all_ohlcv) > 5000: break
+        for exchange_name, symbol in exchanges_to_try:
+            try:
+                info(f"Intentando {exchange_name}...")
+                
+                # Crear instancia
+                if exchange_name == "kraken":
+                    ex = ccxt.kraken({"enableRateLimit": True})
+                elif exchange_name == "coinbase":
+                    ex = ccxt.coinbase({"enableRateLimit": True})
+                elif exchange_name == "okx":
+                    ex = ccxt.okx({"enableRateLimit": True})
+                elif exchange_name == "bybit":
+                    ex = ccxt.bybit({"enableRateLimit": True})
+                else:
+                    continue
+                
+                # Verificar par
+                markets = ex.load_markets()
+                if symbol not in markets:
+                    warn(f"{symbol} no disponible en {exchange_name}")
+                    continue
+                
+                # Descargar
+                since = int((datetime.now(timezone.utc) - timedelta(days=30*months)).timestamp() * 1000)
+                all_ohlcv = []
+                
+                while True:
+                    batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=1000)
+                    if not batch: break
+                    all_ohlcv.extend(batch)
+                    last_ts = batch[-1][0]
+                    if last_ts >= int(datetime.now(timezone.utc).timestamp() * 1000) - 3600*1000:
+                        break
+                    since = last_ts + 1
+                    if len(all_ohlcv) > 5000: break
+                
+                if not all_ohlcv:
+                    warn(f"No hay datos en {exchange_name}")
+                    continue
+                
+                # Procesar
+                df = pd.DataFrame(all_ohlcv, columns=["ts","open","high","low","close","volume"])
+                df["date"] = pd.to_datetime(df["ts"], unit="ms", utc=True).dt.tz_localize(None)
+                df = df[["date","open","high","low","close","volume"]].dropna()
+                df = df.drop_duplicates("date").sort_values("date").reset_index(drop=True)
+                
+                if len(df) < 10:
+                    warn(f"Datos insuficientes de {exchange_name}")
+                    continue
+                
+                # Guardar cache
+                tmp = df.copy(); tmp["date"] = tmp["date"].astype(str)
+                json.dump(tmp.to_dict("records"), open(cache_file, "w"))
+                success(f"{asset} {timeframe}: {len(df)} velas desde {exchange_name}")
+                return df
+                
+            except Exception as e:
+                warn(f"{exchange_name} falló: {str(e)[:80]}")
+                continue
         
-        df = pd.DataFrame(all_ohlcv, columns=["ts","open","high","low","close","volume"])
-        df["date"] = pd.to_datetime(df["ts"], unit="ms", utc=True).dt.tz_localize(None)
-        df = df[["date","open","high","low","close","volume"]].dropna()
-        df = df.drop_duplicates("date").sort_values("date").reset_index(drop=True)
+        # Si todos fallaron
+        err(f"Todos los exchanges fallaron para {asset} {timeframe}")
+        return pd.DataFrame()
         
-        tmp = df.copy(); tmp["date"] = tmp["date"].astype(str)
-        json.dump(tmp.to_dict("records"), open(cache_file, "w"))
-        success(f"{asset} {timeframe}: {len(df)} velas")
-        return df
     except Exception as e:
-        err(f"Error {asset} {timeframe}: {str(e)}")
+        err(f"Error general {asset} {timeframe}: {str(e)}")
         return pd.DataFrame()
 
 
 def fetch_realtime_metrics(asset: str) -> Dict:
-    """Métricas en tiempo real: precio, funding, volumen, spread."""
+    """Métricas en tiempo real desde Kraken."""
     m = {"asset": asset, "price": None, "change_24h": None, "volume_24h": None,
          "bid": None, "ask": None, "spread_pct": None, "funding_rate": None, "source": "unavailable"}
     
     try:
         import ccxt
-        ex = ccxt.binance({"enableRateLimit": True})
-        tk = ex.fetch_ticker(f"{asset}/USDT")
+        ex = ccxt.kraken({"enableRateLimit": True})
+        tk = ex.fetch_ticker(f"{asset}/USD")
         
         m["price"]      = round(tk["last"], 2)
         m["change_24h"] = round(tk.get("percentage", 0), 2)
@@ -129,17 +182,10 @@ def fetch_realtime_metrics(asset: str) -> Dict:
         if m["bid"] and m["ask"] and m["bid"] > 0:
             m["spread_pct"] = round((m["ask"] - m["bid"]) / m["bid"] * 100, 4)
         
-        try:
-            ef = ccxt.binance({"enableRateLimit": True, "options": {"defaultType": "future"}})
-            fr = ef.fetch_funding_rate(f"{asset}/USDT")
-            m["funding_rate"] = round(float(fr.get("fundingRate", 0)) * 100, 4)
-        except Exception:
-            pass
-        
-        m["source"] = "ccxt_binance"
+        m["source"] = "kraken"
         return m
     except Exception as e:
-        warn(f"Métricas {asset}: {str(e)}")
+        warn(f"Métricas {asset}: {str(e)[:80]}")
         return m
 
 
@@ -1593,3 +1639,4 @@ def start_web_server(output_dir: str, port: int = 8080):
 
 if __name__ == "__main__":
     main()
+
