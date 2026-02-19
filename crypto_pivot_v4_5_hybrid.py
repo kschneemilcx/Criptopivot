@@ -1639,3 +1639,9 @@ def start_web_server(output_dir: str, port: int = 8080):
     # Mantener programa vivo
     try:
         server_thread.join()
+    except KeyboardInterrupt:
+        print(Fore.YELLOW + "\n\n  Cerrando...\n")
+
+
+if __name__ == "__main__":
+    main()
