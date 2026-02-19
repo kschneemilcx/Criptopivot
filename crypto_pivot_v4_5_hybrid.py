@@ -65,7 +65,7 @@ def err(m):     print(Fore.RED    + "  ✗  " + m)
 def fetch_ohlcv(asset: str, timeframe: str, months: int) -> pd.DataFrame:
     """
     Descarga OHLCV con fallback a múltiples exchanges para evitar geo-blocking.
-    Exchanges: Kraken -> Coinbase -> OKX -> Bybit
+    Exchanges: BingX -> Kraken -> Coinbase -> OKX -> Bybit
     """
     os.makedirs(CONFIG["CACHE_DIR"], exist_ok=True)
     cache_file = os.path.join(CONFIG["CACHE_DIR"], f"{asset}_{timeframe}_{months}m.json")
@@ -84,8 +84,9 @@ def fetch_ohlcv(asset: str, timeframe: str, months: int) -> pd.DataFrame:
     
     info(f"Descargando {asset} {timeframe} {months}m...")
     
-    # Lista de exchanges (en orden de preferencia, evitando Binance por geo-blocking)
+    # Lista de exchanges (BingX primero por request del usuario)
     exchanges_to_try = [
+        ("bingx", f"{asset}/USDT"),
         ("kraken", f"{asset}/USD"),
         ("coinbase", f"{asset}/USD"),
         ("okx", f"{asset}/USDT"),
@@ -100,7 +101,9 @@ def fetch_ohlcv(asset: str, timeframe: str, months: int) -> pd.DataFrame:
                 info(f"Intentando {exchange_name}...")
                 
                 # Crear instancia
-                if exchange_name == "kraken":
+                if exchange_name == "bingx":
+                    ex = ccxt.bingx({"enableRateLimit": True})
+                elif exchange_name == "kraken":
                     ex = ccxt.kraken({"enableRateLimit": True})
                 elif exchange_name == "coinbase":
                     ex = ccxt.coinbase({"enableRateLimit": True})
@@ -1519,6 +1522,9 @@ setTimeout(() => location.reload(), 3600000);
 </html>
 """
     
+    # Crear directorio de salida si no existe
+    os.makedirs(out_dir, exist_ok=True)
+    
     path = os.path.join(out_dir, "dashboard.html")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -1633,10 +1639,3 @@ def start_web_server(output_dir: str, port: int = 8080):
     # Mantener programa vivo
     try:
         server_thread.join()
-    except KeyboardInterrupt:
-        print(Fore.YELLOW + "\n\n  Cerrando...\n")
-
-
-if __name__ == "__main__":
-    main()
-
